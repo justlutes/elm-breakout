@@ -1,0 +1,55 @@
+/*
+  elm-hot creates an additional div wrapper around the app to make HMR possible.
+  This could break styling in development mode if you are using Elm UI.
+
+  More context in the issue:
+    https://github.com/halfzebra/create-elm-app/issues/320
+*/
+[data-elm-hot="true"] {
+  height: inherit;
+}
+
+:root {
+  --darkblue: #1760b9;
+  --gray: #fbf7f1;
+}
+
+body {
+  font-family: "Press Start 2P", arial;
+  height: 100%;
+  margin: 0;
+  color: var(--gray);
+  background: linear-gradient(90deg, #777bf8, #68d4f8 200%);
+}
+
+.container {
+  width: 100vmin;
+  max-width: 100vw;
+  margin: 0 auto;
+}
+
+.game-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  border-top: 35px solid var(--darkblue);
+  border-right: 50px solid var(--darkblue);
+  border-left: 50px solid var(--darkblue);
+  background-color: var(--gray);
+}
+
+.game-overlay {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.start-title {
+  color: black;
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
