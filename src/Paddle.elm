@@ -43,7 +43,7 @@ width paddle =
 
 normal : Model
 normal =
-    Normal <| PaddleSize 0 4 8 12 16 0.55
+    Normal <| PaddleSize 0 24 32 64 128 0.55
 
 
 short : Model
@@ -51,8 +51,12 @@ short =
     Short <| PaddleSize 0 2 4 6 8 0.55
 
 
-view : Float -> Model -> Svg msg
-view positionX paddle =
+view : Int -> Float -> Model -> Svg msg
+view positionY positionX paddle =
+    let
+        height =
+            15
+    in
     Svg.rect
         [ case paddle of
             Normal size ->
@@ -60,9 +64,9 @@ view positionX paddle =
 
             Short size ->
                 Attributes.width (String.fromInt (size.right + 2))
-        , Attributes.height "1.5"
+        , Attributes.height <| String.fromInt height
         , Attributes.fill "#C64947"
         , Attributes.x <| String.fromFloat positionX
-        , Attributes.y "75.5"
+        , Attributes.y <| String.fromInt (positionY - height)
         ]
         []

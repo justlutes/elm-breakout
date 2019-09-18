@@ -1,9 +1,16 @@
-module Data.Vector2 exposing (Vector2, dotProduct, scaleBy)
+module Data.Vector2 exposing (Vector2, add, dotProduct, scaleBy)
 
 
 type alias Vector2 =
     { x : Float
     , y : Float
+    }
+
+
+add : Vector2 -> Vector2 -> Vector2
+add { x, y } vector =
+    { x = x + vector.x
+    , y = y + vector.y
     }
 
 

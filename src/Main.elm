@@ -1,19 +1,18 @@
-module Main exposing (init, update)
+module Main exposing (init, main, update)
 
 import Ball
 import Brick
 import Browser
 import Browser.Events
-import Data.Vector2 exposing (Vector2)
+import Data.Vector2 as Vector2 exposing (Vector2)
 import Html exposing (Html)
 import Html.Attributes as Attributes
-import Html.Events.Extra as Events
 import Json.Decode as Decode exposing (Decoder)
+import Level exposing (Level)
 import Paddle
 import Random
 import Svg
 import Svg.Attributes as SvgAttributes
-import Time exposing (Posix)
 
 
 
@@ -21,16 +20,24 @@ import Time exposing (Posix)
 
 
 type alias Model =
-    { player : Player
+    { score : Int
+    , level : Level
     , ballPosition : Vector2
     , ballVelocity : Vector2
     , ballRadius : Int
     , state : GameState
-    , paddlePosition : Float
-    , paddleVelocity : Float
+    , paddlePosition : Vector2
+    , paddleVelocity : Vector2
     , paddle : Paddle.Model
     , bricks : List Brick.Model
     , controls : Controls
+    , window : Window
+    }
+
+
+type alias Window =
+    { width : Int
+    , height : Int
     }
 
 
@@ -39,12 +46,6 @@ type GameState
     | Playing
     | Won
     | Lost
-
-
-type alias Player =
-    { score : Int
-    , lives : Int
-    }
 
 
 type BallMovement
@@ -59,31 +60,38 @@ type alias Controls =
     }
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( initModel
-    , Random.generate RowResult (Random.int 4 9)
+init : Flags -> ( Model, Cmd Msg )
+init flags =
+    ( initModel flags
+    , Random.generate LevelResult Level.create
     )
 
 
-initModel : Model
-initModel =
-    { player = Player 0 5
-    , ballPosition = { x = 40, y = initBallPosition }
+initModel : Flags -> Model
+initModel { window } =
+    let
+        width =
+            window.width // 3
+
+        height =
+            window.height // 2
+
+        ballRadius =
+            10
+    in
+    { score = 0
+    , level = Level.empty
+    , ballPosition = { x = 40, y = toFloat height - 15 - ballRadius }
     , ballVelocity = { x = initVelocity, y = initVelocity }
-    , ballRadius = 2
+    , ballRadius = ballRadius
     , state = StartScreen
     , paddle = Paddle.normal
-    , paddlePosition = 40
-    , paddleVelocity = 110
-    , bricks = Brick.init 0
+    , paddlePosition = { x = 40, y = 0 }
+    , paddleVelocity = { x = 100, y = 0 }
+    , bricks = Brick.init []
     , controls = initControls
+    , window = { width = width, height = height }
     }
-
-
-initBallPosition : Float
-initBallPosition =
-    73.5
 
 
 initVelocity : Float
@@ -106,7 +114,8 @@ initControls =
 type Msg
     = Tick Float
     | GameInput ControlState
-    | RowResult Int
+    | LevelResult Level
+    | GetWindowSize Int Int
     | NoOp
 
 
@@ -119,18 +128,46 @@ type ControlState
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        GetWindowSize width height ->
+            ( { model
+                | window = { width = width // 3, height = height // 2 }
+              }
+            , Cmd.none
+            )
+
         Tick delta ->
             case model.state of
                 Playing ->
-                    ( model, Cmd.none )
+                    let
+                        distance =
+                            delta * 200 * toFloat (Level.speed model.level)
+
+                        newPaddlePosition =
+                            movePaddle model distance
+
+                        newBallPosition =
+                            newPaddlePosition.x + (toFloat (Level.paddleWidth model.level) / 2)
+                    in
+                    ( { model
+                        | paddlePosition = newPaddlePosition
+                        , ballPosition =
+                            { x = newBallPosition
+                            , y = model.ballPosition.y
+                            }
+                      }
+                    , Cmd.none
+                    )
 
                 StartScreen ->
                     let
+                        distance =
+                            delta * 200 * toFloat (Level.speed model.level)
+
                         newPaddlePosition =
-                            movePaddle model delta
+                            movePaddle model distance
 
                         newBallPosition =
-                            newPaddlePosition + (toFloat (Paddle.width model.paddle) / 2)
+                            newPaddlePosition.x + (toFloat (Paddle.width model.paddle) / 2)
                     in
                     ( { model
                         | paddlePosition = newPaddlePosition
@@ -145,8 +182,13 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        RowResult rows ->
-            ( { model | bricks = Brick.init rows }, Cmd.none )
+        LevelResult level ->
+            ( { model
+                | level = level
+                , bricks = Brick.init level.bricks
+              }
+            , Cmd.none
+            )
 
         GameInput input ->
             case model.state of
@@ -155,7 +197,7 @@ update msg model =
                         PaddleLeft ->
                             ( { model
                                 | controls =
-                                    { left = True
+                                    { left = not model.controls.left
                                     , right = False
                                     , movement = Stopped
                                     }
@@ -166,8 +208,8 @@ update msg model =
                         PaddleRight ->
                             ( { model
                                 | controls =
-                                    { left = True
-                                    , right = False
+                                    { left = False
+                                    , right = not model.controls.right
                                     , movement = Stopped
                                     }
                               }
@@ -217,20 +259,24 @@ update msg model =
             ( model, Cmd.none )
 
 
-movePaddle : Model -> Float -> Float
-movePaddle { paddlePosition, paddleVelocity, controls } delta =
+movePaddle : Model -> Float -> Vector2
+movePaddle { paddlePosition, controls, window } distance =
     let
-        newPos =
+        movementVector =
             if controls.left then
-                paddlePosition - 1 * paddleVelocity * delta
+                { x = -1, y = 0 }
 
             else if controls.right then
-                paddlePosition + 1 * paddleVelocity * delta
+                { x = 1, y = 0 }
 
             else
-                paddlePosition
+                { x = 0, y = 0 }
+
+        newPos =
+            Vector2.scaleBy movementVector distance
+                |> Vector2.add paddlePosition
     in
-    if 0 < newPos && newPos <= 80 then
+    if 0 < newPos.x && newPos.x <= toFloat (window.width - 132) then
         newPos
 
     else
@@ -254,7 +300,7 @@ serve model =
             , movement = Moving
             }
         , state = Playing
-        , ballVelocity = { x = traction * model.paddlePosition, y = serveSpeed }
+        , ballVelocity = { x = traction * model.paddlePosition.x, y = serveSpeed }
     }
 
 
@@ -266,11 +312,16 @@ view : Model -> Html Msg
 view model =
     Html.div
         [ Attributes.class "container" ]
-        [ header model
-        , Html.div
+        [ Html.div
             [ Attributes.class "game-container"
             ]
-            [ board model
+            [ header model
+            , Html.div
+                [ Attributes.class "game-overlay" ]
+                [ Html.div [ Attributes.class "start-title" ]
+                    [ Html.text "Space to launch the ball" ]
+                ]
+            , board model
             , case model.state of
                 StartScreen ->
                     Html.div [] []
@@ -299,11 +350,7 @@ board : Model -> Html Msg
 board model =
     case model.state of
         StartScreen ->
-            Html.div [ Attributes.class "game-overlay" ]
-                [ Html.div [ Attributes.class "start-title" ]
-                    [ Html.text "Space to launch the ball" ]
-                , displayGameBoard model
-                ]
+            displayGameBoard model
 
         Playing ->
             displayGameBoard model
@@ -314,18 +361,29 @@ board model =
 
 displayGameBoard : Model -> Html Msg
 displayGameBoard model =
+    let
+        window =
+            model.window
+
+        numColumns =
+            model.level.bricks
+                |> List.map
+                    (\column ->
+                        List.length column
+                    )
+                |> List.head
+                |> Maybe.withDefault 0
+    in
     Svg.svg
-        [ SvgAttributes.width "100%"
-        , SvgAttributes.height "100%"
-        , SvgAttributes.viewBox "0 0 100 77"
-        , SvgAttributes.fill "#000000"
+        [ SvgAttributes.width <| String.fromInt window.width
+        , SvgAttributes.height <| String.fromInt window.height
+        , SvgAttributes.class "game-board"
         ]
     <|
-        (Brick.view model.bricks
+        Brick.view numColumns model.bricks
             ++ [ Ball.view model.ballPosition model.ballRadius
-               , Paddle.view model.paddlePosition model.paddle
+               , Paddle.view window.height model.paddlePosition.x model.paddle
                ]
-        )
 
 
 subscriptions : Model -> Sub Msg
@@ -334,6 +392,7 @@ subscriptions _ =
         [ Browser.Events.onKeyDown keyDecoder
         , Browser.Events.onKeyUp keyDecoder
         , Browser.Events.onAnimationFrameDelta (\dt -> Tick (dt / 1000))
+        , Browser.Events.onResize GetWindowSize
         ]
 
 
@@ -362,11 +421,15 @@ toInput string =
 ---- PROGRAM ----
 
 
-main : Program () Model Msg
+type alias Flags =
+    { window : Window }
+
+
+main : Program Flags Model Msg
 main =
     Browser.element
         { view = view
-        , init = \_ -> init
+        , init = init
         , update = update
         , subscriptions = subscriptions
         }

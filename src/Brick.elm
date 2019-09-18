@@ -7,25 +7,29 @@ import Svg.Attributes as Attributes
 type alias Model =
     { fill : String
     , density : Int
-    , value : Int
     , positionY : Int
-    , positionX : Int
+    , positionX : Float
     }
 
 
-init : Int -> List Model
+init : List (List Int) -> List Model
 init rows =
-    List.range 1 rows
-        |> List.map create
+    rows
+        |> List.indexedMap create
         |> List.concat
 
 
-create : Int -> List Model
-create row =
-    toList (toFillColor row)
-        (floor (1 / toFloat row))
-        (row * 2)
-        (row * 3)
+create : Int -> List Int -> List Model
+create row column =
+    column
+        |> List.indexedMap
+            (\index density ->
+                Model
+                    (toFillColor density)
+                    density
+                    (20 * row + 40)
+                    (100 / toFloat (List.length column) * toFloat index)
+            )
 
 
 toFillColor : Int -> String
@@ -37,24 +41,25 @@ toFillColor i =
         ]
 
 
-toList : String -> Int -> Int -> Int -> List Model
-toList color density value positionY =
-    List.map (Model color density value positionY) (List.map ((*) 10) (List.range 0 9))
+view : Int -> List Model -> List (Svg msg)
+view columnLength bricks =
+    let
+        width =
+            100 / toFloat columnLength
+    in
+    List.map (viewBrick width) bricks
 
 
-view : List Model -> List (Svg msg)
-view bricks =
-    List.map viewBrick bricks
-
-
-viewBrick : Model -> Svg msg
-viewBrick { fill, positionY, positionX } =
+viewBrick : Float -> Model -> Svg msg
+viewBrick width { fill, positionY, positionX } =
     Svg.rect
-        [ Attributes.width "10%"
-        , Attributes.height "3"
+        [ Attributes.width (String.fromFloat width ++ "%")
+        , Attributes.height "20"
+        , Attributes.stroke "rgb(237, 232, 225)"
+        , Attributes.strokeWidth "1px"
         , Attributes.fill fill
         , Attributes.y <| String.fromInt positionY
-        , Attributes.x <| String.fromInt positionX ++ "%"
+        , Attributes.x <| String.fromFloat positionX ++ "%"
         ]
         []
 
@@ -65,7 +70,7 @@ getRow ballY bricks =
         |> List.filter (\block -> block.positionY == ballY)
 
 
-getBrick : Int -> List Model -> Maybe Model
+getBrick : Float -> List Model -> Maybe Model
 getBrick ballX bricks =
     bricks
         |> List.filter (\b -> b.positionX == ballX)
