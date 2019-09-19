@@ -1,15 +1,16 @@
 module Main exposing (init, main, update)
 
-import Ball
-import Brick
 import Browser
 import Browser.Events
+import Data.Level as Level exposing (Level)
 import Data.Vector2 as Vector2 exposing (Vector2)
+import Game.Ball as Ball
+import Game.Brick as Brick
+import Game.Life as Life
+import Game.Paddle as Paddle
 import Html exposing (Html)
 import Html.Attributes as Attributes
 import Json.Decode as Decode exposing (Decoder)
-import Level exposing (Level)
-import Paddle
 import Random
 import Svg
 import Svg.Attributes as SvgAttributes
@@ -82,7 +83,7 @@ initModel { window } =
     { score = 0
     , level = Level.empty
     , ballPosition = { x = 40, y = toFloat height - 15 - ballRadius }
-    , ballVelocity = { x = initVelocity, y = initVelocity }
+    , ballVelocity = Vector2.normalize { x = 1, y = -1 }
     , ballRadius = ballRadius
     , state = StartScreen
     , paddle = Paddle.normal
@@ -115,20 +116,23 @@ type Msg
     = Tick Float
     | GameInput ControlState
     | LevelResult Level
-    | GetWindowSize Int Int
+    | ResizeWindow Int Int
     | NoOp
 
 
 type ControlState
     = PaddleLeft
+    | PaddleLeftUp
     | PaddleRight
-    | LaunchAndPause
+    | PaddleRightUp
+    | Serve
+    | Pause
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GetWindowSize width height ->
+        ResizeWindow width height ->
             ( { model
                 | window = { width = width // 3, height = height // 2 }
               }
@@ -138,44 +142,12 @@ update msg model =
         Tick delta ->
             case model.state of
                 Playing ->
-                    let
-                        distance =
-                            delta * 200 * toFloat (Level.speed model.level)
-
-                        newPaddlePosition =
-                            movePaddle model distance
-
-                        newBallPosition =
-                            newPaddlePosition.x + (toFloat (Level.paddleWidth model.level) / 2)
-                    in
-                    ( { model
-                        | paddlePosition = newPaddlePosition
-                        , ballPosition =
-                            { x = newBallPosition
-                            , y = model.ballPosition.y
-                            }
-                      }
+                    ( updateGameState model delta
                     , Cmd.none
                     )
 
                 StartScreen ->
-                    let
-                        distance =
-                            delta * 200 * toFloat (Level.speed model.level)
-
-                        newPaddlePosition =
-                            movePaddle model distance
-
-                        newBallPosition =
-                            newPaddlePosition.x + (toFloat (Paddle.width model.paddle) / 2)
-                    in
-                    ( { model
-                        | paddlePosition = newPaddlePosition
-                        , ballPosition =
-                            { x = newBallPosition
-                            , y = model.ballPosition.y
-                            }
-                      }
+                    ( updateGameState model delta
                     , Cmd.none
                     )
 
@@ -216,19 +188,33 @@ update msg model =
                             , Cmd.none
                             )
 
-                        LaunchAndPause ->
+                        Pause ->
                             ( { model
                                 | controls = { left = False, right = False, movement = Stopped }
                               }
                             , Cmd.none
                             )
 
+                        _ ->
+                            ( model, Cmd.none )
+
                 StartScreen ->
                     case input of
                         PaddleLeft ->
                             ( { model
                                 | controls =
-                                    { left = not model.controls.left
+                                    { left = True
+                                    , right = False
+                                    , movement = Stopped
+                                    }
+                              }
+                            , Cmd.none
+                            )
+
+                        PaddleLeftUp ->
+                            ( { model
+                                | controls =
+                                    { left = False
                                     , right = False
                                     , movement = Stopped
                                     }
@@ -240,23 +226,58 @@ update msg model =
                             ( { model
                                 | controls =
                                     { left = False
-                                    , right = not model.controls.right
+                                    , right = True
                                     , movement = Stopped
                                     }
                               }
                             , Cmd.none
                             )
 
-                        LaunchAndPause ->
+                        PaddleRightUp ->
+                            ( { model
+                                | controls =
+                                    { left = False
+                                    , right = False
+                                    , movement = Stopped
+                                    }
+                              }
+                            , Cmd.none
+                            )
+
+                        Serve ->
                             ( serve model
                             , Cmd.none
                             )
+
+                        _ ->
+                            ( model, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
+
+
+updateGameState : Model -> Float -> Model
+updateGameState model delta =
+    let
+        distance =
+            delta * 250 * toFloat (Level.speed model.level)
+
+        newPaddlePosition =
+            movePaddle model distance
+
+        newBallPosition =
+            newPaddlePosition.x + (toFloat (Paddle.width model.paddle) / 2)
+    in
+    { model
+        | paddlePosition = newPaddlePosition
+        , ballPosition =
+            { x = newBallPosition
+            , y = model.ballPosition.y
+            }
+    }
 
 
 movePaddle : Model -> Float -> Vector2
@@ -343,7 +364,26 @@ view model =
 
 header : Model -> Html Msg
 header model =
-    Html.header [] [ Html.text "header" ]
+    let
+        window =
+            model.window
+
+        headerHeight =
+            toFloat window.height * 0.33
+    in
+    Svg.svg
+        [ SvgAttributes.width <| String.fromInt window.width
+        , SvgAttributes.height <| String.fromFloat headerHeight
+        ]
+    <|
+        [ Svg.text_
+            [ SvgAttributes.x "0"
+            , SvgAttributes.y <| String.fromFloat (headerHeight / 2 + 4)
+            , SvgAttributes.fontSize "12"
+            ]
+            [ Svg.text "LEVEL 1" ]
+        ]
+            ++ Life.view (Level.lives model.level) headerHeight window.width
 
 
 board : Model -> Html Msg
@@ -390,15 +430,33 @@ subscriptions : Model -> Sub Msg
 subscriptions _ =
     Sub.batch
         [ Browser.Events.onKeyDown keyDecoder
-        , Browser.Events.onKeyUp keyDecoder
+        , Browser.Events.onKeyUp keyUpDecoder
         , Browser.Events.onAnimationFrameDelta (\dt -> Tick (dt / 1000))
-        , Browser.Events.onResize GetWindowSize
+        , Browser.Events.onResize ResizeWindow
         ]
 
 
 keyDecoder : Decoder Msg
 keyDecoder =
     Decode.map toInput (Decode.field "key" Decode.string)
+
+
+keyUpDecoder : Decoder Msg
+keyUpDecoder =
+    Decode.map toUpInput (Decode.field "key" Decode.string)
+
+
+toUpInput : String -> Msg
+toUpInput string =
+    case string of
+        "ArrowLeft" ->
+            GameInput PaddleLeftUp
+
+        "ArrowRight" ->
+            GameInput PaddleRightUp
+
+        _ ->
+            NoOp
 
 
 toInput : String -> Msg
@@ -411,7 +469,10 @@ toInput string =
             GameInput PaddleRight
 
         " " ->
-            GameInput LaunchAndPause
+            GameInput Serve
+
+        "Escape" ->
+            GameInput Pause
 
         _ ->
             NoOp

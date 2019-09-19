@@ -1,4 +1,4 @@
-module Level exposing (Level, bricks, create, empty, lives, paddleWidth, speed)
+module Data.Level exposing (Level, bricks, create, empty, lives, paddleWidth, speed)
 
 import Random exposing (Generator)
 

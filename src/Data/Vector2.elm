@@ -1,4 +1,4 @@
-module Data.Vector2 exposing (Vector2, add, dotProduct, scaleBy)
+module Data.Vector2 exposing (Vector2, add, dotProduct, normalize, scaleBy)
 
 
 type alias Vector2 =
@@ -19,6 +19,15 @@ scaleBy { x, y } number =
     { x = x * number
     , y = y * number
     }
+
+
+normalize : Vector2 -> Vector2
+normalize vector =
+    let
+        length =
+            acos (vector.x / vector.y)
+    in
+    scaleBy vector (1 / length)
 
 
 dotProduct : Vector2 -> Vector2 -> Vector2

@@ -1,4 +1,4 @@
-module Brick exposing (Model, getBrick, getRow, init, view)
+module Game.Brick exposing (Model, getBrick, getRow, init, view)
 
 import Svg exposing (Svg)
 import Svg.Attributes as Attributes

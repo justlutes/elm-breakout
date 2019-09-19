@@ -1,4 +1,4 @@
-module Paddle exposing (Model(..), normal, short, traction, view, width)
+module Game.Paddle exposing (Model(..), normal, short, traction, view, width)
 
 import Svg exposing (Svg)
 import Svg.Attributes as Attributes

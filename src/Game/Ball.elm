@@ -1,4 +1,4 @@
-module Ball exposing (view)
+module Game.Ball exposing (view)
 
 import Data.Vector2 exposing (Vector2)
 import Html exposing (Html)
