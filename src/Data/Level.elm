@@ -5,7 +5,7 @@ import Random exposing (Generator)
 
 type alias Level =
     { lives : Int
-    , paddleWidth : Int
+    , paddleWidth : Float
     , speed : Int
     , bricks : List (List Int)
     }
@@ -16,7 +16,7 @@ lives level =
     level.lives
 
 
-paddleWidth : Level -> Int
+paddleWidth : Level -> Float
 paddleWidth level =
     level.paddleWidth
 
@@ -55,9 +55,9 @@ randLiveGen =
     Random.int 2 5
 
 
-randPaddleGen : Generator Int
+randPaddleGen : Generator Float
 randPaddleGen =
-    Random.int 1 3
+    Random.float 0.25 1
 
 
 randSpeedGen : Generator Int

@@ -25,7 +25,7 @@ type alias Model =
     , level : Level
     , ballPosition : Vector2
     , ballVelocity : Vector2
-    , ballRadius : Int
+    , ballRadius : Float
     , state : GameState
     , paddlePosition : Vector2
     , paddleVelocity : Vector2
@@ -33,6 +33,7 @@ type alias Model =
     , bricks : List Brick.Model
     , controls : Controls
     , window : Window
+    , unitsOnScreen : Float
     }
 
 
@@ -77,27 +78,47 @@ initModel { window } =
         height =
             window.height // 2
 
-        ballRadius =
-            10
+        unitsOnScreen =
+            toFloat (min width height)
     in
     { score = 0
     , level = Level.empty
-    , ballPosition = { x = 40, y = toFloat height - 15 - ballRadius }
-    , ballVelocity = Vector2.normalize { x = 1, y = -1 }
-    , ballRadius = ballRadius
+    , ballPosition = { x = 0, y = 0 }
+    , ballVelocity = { x = 0, y = 0 }
+    , ballRadius = 0.035 * unitsOnScreen
     , state = StartScreen
-    , paddle = Paddle.normal
-    , paddlePosition = { x = 40, y = 0 }
+    , paddle = { height = 0.05 * unitsOnScreen, width = 0.5 * unitsOnScreen }
+    , paddlePosition = { x = 0, y = 0 }
     , paddleVelocity = { x = 100, y = 0 }
     , bricks = Brick.init []
     , controls = initControls
     , window = { width = width, height = height }
+    , unitsOnScreen = unitsOnScreen
     }
 
 
-initVelocity : Float
-initVelocity =
-    -0.04
+initialBallAndPaddle : Model -> ( Vector2, Vector2 )
+initialBallAndPaddle { level, paddle, window, unitsOnScreen } =
+    let
+        ballRadius =
+            0.035 * unitsOnScreen
+
+        paddleWidth =
+            level.paddleWidth * unitsOnScreen
+
+        paddlePosX =
+            (toFloat window.width - paddleWidth) / 2
+
+        ballPosX =
+            (paddlePosX + paddleWidth - ballRadius) / 2
+
+        ballVector =
+            { x = ballPosX, y = toFloat window.height - paddle.height - ballRadius }
+
+        paddleVector =
+            { x = paddlePosX, y = toFloat window.height - paddle.height }
+    in
+    ( ballVector, paddleVector )
 
 
 initControls : Controls
@@ -133,18 +154,40 @@ update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         ResizeWindow width height ->
-            ( { model
-                | window = { width = width // 3, height = height // 2 }
-              }
-            , Cmd.none
-            )
+            case model.state of
+                StartScreen ->
+                    let
+                        gameHeight =
+                            height // 2
+                    in
+                    ( { model
+                        | window = { width = width // 3, height = gameHeight }
+                        , ballPosition = { x = model.ballPosition.x, y = toFloat gameHeight - 15 - model.ballRadius }
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( { model
+                        | window = { width = width // 3, height = height // 2 }
+                      }
+                    , Cmd.none
+                    )
 
         Tick delta ->
             case model.state of
                 Playing ->
-                    ( updateGameState model delta
-                    , Cmd.none
-                    )
+                    let
+                        newModel =
+                            updateGameState model delta
+                    in
+                    if newModel.level.lives < 1 then
+                        ( { newModel | state = Lost }, Cmd.none )
+
+                    else
+                        ( newModel
+                        , Cmd.none
+                        )
 
                 StartScreen ->
                     ( updateGameState model delta
@@ -155,9 +198,19 @@ update msg model =
                     ( model, Cmd.none )
 
         LevelResult level ->
-            ( { model
-                | level = level
-                , bricks = Brick.init level.bricks
+            let
+                modelWithLevel =
+                    { model
+                        | level = level
+                        , bricks = Brick.init level.bricks
+                    }
+
+                ( ballPos, paddlePos ) =
+                    initialBallAndPaddle modelWithLevel
+            in
+            ( { modelWithLevel
+                | ballPosition = ballPos
+                , paddlePosition = paddlePos
               }
             , Cmd.none
             )
@@ -263,25 +316,60 @@ updateGameState : Model -> Float -> Model
 updateGameState model delta =
     let
         distance =
-            delta * 250 * toFloat (Level.speed model.level)
+            delta * 0.005 * toFloat (Level.speed model.level)
 
-        newPaddlePosition =
-            movePaddle model distance
+        newBallCenter =
+            Vector2.scaleBy model.ballVelocity distance
+                |> Vector2.add model.ballPosition
 
-        newBallPosition =
-            newPaddlePosition.x + (toFloat (Paddle.width model.paddle) / 2)
+        ballBottom =
+            newBallCenter.y - model.ballRadius
     in
-    { model
-        | paddlePosition = newPaddlePosition
-        , ballPosition =
-            { x = newBallPosition
-            , y = model.ballPosition.y
-            }
-    }
+    if ballBottom > toFloat model.window.height then
+        let
+            ( ballPos, paddlePos ) =
+                initialBallAndPaddle model
+
+            level =
+                model.level
+
+            updatedLevel =
+                { level | lives = level.lives - 1 }
+        in
+        { model
+            | ballPosition = ballPos
+            , paddlePosition = paddlePos
+            , level = updatedLevel
+        }
+
+    else
+        let
+            newPaddlePosition =
+                movePaddle model distance
+
+            newBallPosition =
+                case model.state of
+                    Playing ->
+                        updateBallPosition model distance
+
+                    _ ->
+                        { x = newPaddlePosition.x + (model.level.paddleWidth * model.unitsOnScreen / 2)
+                        , y = model.ballPosition.y
+                        }
+        in
+        { model
+            | paddlePosition = newPaddlePosition
+            , ballPosition = newBallPosition
+        }
+
+
+updateBallPosition : Model -> Float -> Vector2
+updateBallPosition model distance =
+    { x = 0, y = 0 }
 
 
 movePaddle : Model -> Float -> Vector2
-movePaddle { paddlePosition, controls, window } distance =
+movePaddle { paddlePosition, controls, window, unitsOnScreen } distance =
     let
         movementVector =
             if controls.left then
@@ -298,6 +386,7 @@ movePaddle { paddlePosition, controls, window } distance =
                 |> Vector2.add paddlePosition
     in
     if 0 < newPos.x && newPos.x <= toFloat (window.width - 132) then
+        -- Vector2.scaleBy newPos unitsOnScreen
         newPos
 
     else
@@ -307,12 +396,15 @@ movePaddle { paddlePosition, controls, window } distance =
 serve : Model -> Model
 serve model =
     let
-        serveSpeed =
-            200
+        controls =
+            model.controls
 
-        traction =
-            model.paddle
-                |> Paddle.traction
+        initialVelocity =
+            if controls.right then
+                Vector2.normalize { x = 1, y = -1 }
+
+            else
+                Vector2.normalize { x = -1, y = -1 }
     in
     { model
         | controls =
@@ -321,7 +413,7 @@ serve model =
             , movement = Moving
             }
         , state = Playing
-        , ballVelocity = { x = traction * model.paddlePosition.x, y = serveSpeed }
+        , ballVelocity = initialVelocity
     }
 
 
@@ -422,7 +514,7 @@ displayGameBoard model =
     <|
         Brick.view numColumns model.bricks
             ++ [ Ball.view model.ballPosition model.ballRadius
-               , Paddle.view window.height model.paddlePosition.x model.paddle
+               , Paddle.view model.paddlePosition model.paddle
                ]
 
 
@@ -431,7 +523,7 @@ subscriptions _ =
     Sub.batch
         [ Browser.Events.onKeyDown keyDecoder
         , Browser.Events.onKeyUp keyUpDecoder
-        , Browser.Events.onAnimationFrameDelta (\dt -> Tick (dt / 1000))
+        , Browser.Events.onAnimationFrameDelta Tick
         , Browser.Events.onResize ResizeWindow
         ]
 

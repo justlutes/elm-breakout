@@ -1,4 +1,4 @@
-module Data.Vector2 exposing (Vector2, add, dotProduct, normalize, scaleBy)
+module Data.Vector2 exposing (Vector2, add, angleBetween, dotProduct, normalize, scaleBy)
 
 
 type alias Vector2 =
@@ -30,8 +30,21 @@ normalize vector =
     scaleBy vector (1 / length)
 
 
-dotProduct : Vector2 -> Vector2 -> Vector2
+dotProduct : Vector2 -> Vector2 -> Float
 dotProduct vector { x, y } =
-    { x = vector.x * x
-    , y = vector.y * y
-    }
+    vector.x * x + vector.y * y
+
+
+angleBetween : Vector2 -> Vector2 -> Float
+angleBetween vector vector_ =
+    atan2 (crossProduct vector vector_) (dotProduct vector vector_)
+        |> (\radians -> (radians * 180) / pi)
+
+
+
+-- HELPERS
+
+
+crossProduct : Vector2 -> Vector2 -> Float
+crossProduct vector { x, y } =
+    vector.x * y - vector.y * x
