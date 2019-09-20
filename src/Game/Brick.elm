@@ -27,7 +27,7 @@ create row column =
                 Model
                     (toFillColor density)
                     density
-                    (20 * row + 40)
+                    (30 * row + 40)
                     (100 / toFloat (List.length column) * toFloat index)
             )
 
@@ -54,7 +54,7 @@ viewBrick : Float -> Model -> Svg msg
 viewBrick width { fill, positionY, positionX } =
     Svg.rect
         [ Attributes.width (String.fromFloat width ++ "%")
-        , Attributes.height "20"
+        , Attributes.height "30"
         , Attributes.stroke "rgb(237, 232, 225)"
         , Attributes.strokeWidth "1px"
         , Attributes.fill fill

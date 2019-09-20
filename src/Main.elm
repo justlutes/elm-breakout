@@ -73,10 +73,10 @@ initModel : Flags -> Model
 initModel { window } =
     let
         width =
-            window.width // 3
+            window.width
 
         height =
-            window.height // 2
+            window.height
 
         unitsOnScreen =
             toFloat (min width height)
@@ -85,9 +85,9 @@ initModel { window } =
     , level = Level.empty
     , ballPosition = { x = 0, y = 0 }
     , ballVelocity = { x = 0, y = 0 }
-    , ballRadius = 0.035 * unitsOnScreen
+    , ballRadius = 0.025 * unitsOnScreen
     , state = StartScreen
-    , paddle = { height = 0.05 * unitsOnScreen, width = 0.5 * unitsOnScreen }
+    , paddle = { height = 0.033 * unitsOnScreen, width = 0.25 * unitsOnScreen }
     , paddlePosition = { x = 0, y = 0 }
     , paddleVelocity = { x = 100, y = 0 }
     , bricks = Brick.init []
@@ -97,28 +97,44 @@ initModel { window } =
     }
 
 
-initialBallAndPaddle : Model -> ( Vector2, Vector2 )
+initialBallAndPaddle :
+    Model
+    ->
+        { ballPosition : Vector2
+        , paddlePosition : Vector2
+        , paddle : Paddle.Model
+        }
 initialBallAndPaddle { level, paddle, window, unitsOnScreen } =
     let
+        gameHeight =
+            toFloat window.height * 0.66
+
         ballRadius =
-            0.035 * unitsOnScreen
+            0.025 * unitsOnScreen
 
         paddleWidth =
-            level.paddleWidth * unitsOnScreen
+            level.paddleWidth * unitsOnScreen * 0.45
 
         paddlePosX =
             (toFloat window.width - paddleWidth) / 2
 
         ballPosX =
-            (paddlePosX + paddleWidth - ballRadius) / 2
+            paddlePosX + (paddleWidth / 2)
 
         ballVector =
-            { x = ballPosX, y = toFloat window.height - paddle.height - ballRadius }
+            { x = ballPosX
+            , y = gameHeight - paddle.height - ballRadius
+            }
 
         paddleVector =
-            { x = paddlePosX, y = toFloat window.height - paddle.height }
+            { x = paddlePosX
+            , y = gameHeight - paddle.height
+            }
     in
-    ( ballVector, paddleVector )
+    { ballPosition = ballVector
+    , paddlePosition = paddleVector
+    , paddle = { height = paddle.height, width = paddleWidth }
+    }
 
 
 initControls : Controls
@@ -156,13 +172,9 @@ update msg model =
         ResizeWindow width height ->
             case model.state of
                 StartScreen ->
-                    let
-                        gameHeight =
-                            height // 2
-                    in
                     ( { model
-                        | window = { width = width // 3, height = gameHeight }
-                        , ballPosition = { x = model.ballPosition.x, y = toFloat gameHeight - 15 - model.ballRadius }
+                        | window = { width = width // 2, height = height }
+                        , ballPosition = { x = model.ballPosition.x, y = toFloat height - 15 - model.ballRadius }
                       }
                     , Cmd.none
                     )
@@ -205,12 +217,13 @@ update msg model =
                         , bricks = Brick.init level.bricks
                     }
 
-                ( ballPos, paddlePos ) =
+                { ballPosition, paddlePosition, paddle } =
                     initialBallAndPaddle modelWithLevel
             in
             ( { modelWithLevel
-                | ballPosition = ballPos
-                , paddlePosition = paddlePos
+                | ballPosition = ballPosition
+                , paddlePosition = paddlePosition
+                , paddle = paddle
               }
             , Cmd.none
             )
@@ -316,7 +329,7 @@ updateGameState : Model -> Float -> Model
 updateGameState model delta =
     let
         distance =
-            delta * 0.005 * toFloat (Level.speed model.level)
+            delta * 0.5 * toFloat (Level.speed model.level)
 
         newBallCenter =
             Vector2.scaleBy model.ballVelocity distance
@@ -327,7 +340,7 @@ updateGameState model delta =
     in
     if ballBottom > toFloat model.window.height then
         let
-            ( ballPos, paddlePos ) =
+            { ballPosition, paddlePosition, paddle } =
                 initialBallAndPaddle model
 
             level =
@@ -337,8 +350,9 @@ updateGameState model delta =
                 { level | lives = level.lives - 1 }
         in
         { model
-            | ballPosition = ballPos
-            , paddlePosition = paddlePos
+            | ballPosition = ballPosition
+            , paddlePosition = paddlePosition
+            , paddle = paddle
             , level = updatedLevel
         }
 
@@ -353,7 +367,7 @@ updateGameState model delta =
                         updateBallPosition model distance
 
                     _ ->
-                        { x = newPaddlePosition.x + (model.level.paddleWidth * model.unitsOnScreen / 2)
+                        { x = newPaddlePosition.x + (model.paddle.width / 2)
                         , y = model.ballPosition.y
                         }
         in
@@ -369,13 +383,13 @@ updateBallPosition model distance =
 
 
 movePaddle : Model -> Float -> Vector2
-movePaddle { paddlePosition, controls, window, unitsOnScreen } distance =
+movePaddle model distance =
     let
         movementVector =
-            if controls.left then
+            if model.controls.left then
                 { x = -1, y = 0 }
 
-            else if controls.right then
+            else if model.controls.right then
                 { x = 1, y = 0 }
 
             else
@@ -383,14 +397,17 @@ movePaddle { paddlePosition, controls, window, unitsOnScreen } distance =
 
         newPos =
             Vector2.scaleBy movementVector distance
-                |> Vector2.add paddlePosition
+                |> Vector2.add model.paddlePosition
     in
-    if 0 < newPos.x && newPos.x <= toFloat (window.width - 132) then
+    if newPos.x < 0 then
+        { newPos | x = 0 }
+
+    else if newPos.x > (toFloat model.window.width - model.paddle.width) then
         -- Vector2.scaleBy newPos unitsOnScreen
-        newPos
+        { newPos | x = toFloat model.window.width - model.paddle.width }
 
     else
-        paddlePosition
+        newPos
 
 
 serve : Model -> Model
@@ -429,11 +446,16 @@ view model =
             [ Attributes.class "game-container"
             ]
             [ header model
-            , Html.div
-                [ Attributes.class "game-overlay" ]
-                [ Html.div [ Attributes.class "start-title" ]
-                    [ Html.text "Space to launch the ball" ]
-                ]
+            , case model.state of
+                StartScreen ->
+                    Html.div
+                        [ Attributes.class "game-overlay" ]
+                        [ Html.div [ Attributes.class "start-title" ]
+                            [ Html.text "Space to launch the ball" ]
+                        ]
+
+                _ ->
+                    Html.text ""
             , board model
             , case model.state of
                 StartScreen ->
@@ -461,7 +483,7 @@ header model =
             model.window
 
         headerHeight =
-            toFloat window.height * 0.33
+            toFloat window.height * 0.16
     in
     Svg.svg
         [ SvgAttributes.width <| String.fromInt window.width
@@ -505,10 +527,13 @@ displayGameBoard model =
                     )
                 |> List.head
                 |> Maybe.withDefault 0
+
+        height =
+            toFloat window.height * 0.66
     in
     Svg.svg
         [ SvgAttributes.width <| String.fromInt window.width
-        , SvgAttributes.height <| String.fromInt window.height
+        , SvgAttributes.height <| String.fromFloat height
         , SvgAttributes.class "game-board"
         ]
     <|

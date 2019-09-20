@@ -8,10 +8,10 @@ view : Int -> Float -> Int -> List (Svg msg)
 view lives containerHeight containerWidth =
     let
         height =
-            containerHeight / toFloat 5
+            containerHeight * 0.16
 
         width =
-            (containerWidth // 4) // lives
+            (containerWidth // 5) // lives
     in
     List.range 1 lives
         |> List.map

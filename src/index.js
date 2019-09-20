@@ -4,7 +4,7 @@ import * as serviceWorker from './serviceWorker';
 
 const flags = {
   window: {
-    width: window.innerWidth,
+    width: window.innerWidth / 2,
     height: window.innerHeight,
   }
 };
