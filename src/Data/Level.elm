@@ -1,4 +1,4 @@
-module Data.Level exposing (Level, bricks, create, empty, lives, paddleWidth, speed)
+module Data.Level exposing (Level, bricks, empty, lives, paddleWidth, random, speed)
 
 import Random exposing (Generator)
 
@@ -40,8 +40,8 @@ empty =
     }
 
 
-create : Generator Level
-create =
+random : Generator Level
+random =
     Random.map4
         Level
         randLiveGen

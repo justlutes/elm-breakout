@@ -1,8 +1,9 @@
 module Main exposing (init, main, update)
 
-import Browser
+import Browser exposing (Document)
 import Browser.Events
 import Data.Level as Level exposing (Level)
+import Data.Movement as Movement
 import Data.Vector2 as Vector2 exposing (Vector2)
 import Game.Ball as Ball
 import Game.Brick as Brick
@@ -10,10 +11,11 @@ import Game.Life as Life
 import Game.Paddle as Paddle
 import Html exposing (Html)
 import Html.Attributes as Attributes
+import Html.Events as Events
 import Json.Decode as Decode exposing (Decoder)
 import Random
 import Svg
-import Svg.Attributes as SvgAttributes
+import Svg.Attributes
 
 
 
@@ -28,7 +30,6 @@ type alias Model =
     , ballRadius : Float
     , state : GameState
     , paddlePosition : Vector2
-    , paddleVelocity : Vector2
     , paddle : Paddle.Model
     , bricks : List Brick.Model
     , controls : Controls
@@ -38,8 +39,8 @@ type alias Model =
 
 
 type alias Window =
-    { width : Int
-    , height : Int
+    { width : Float
+    , height : Float
     }
 
 
@@ -65,7 +66,7 @@ type alias Controls =
 init : Flags -> ( Model, Cmd Msg )
 init flags =
     ( initModel flags
-    , Random.generate LevelResult Level.create
+    , Random.generate LevelResult Level.random
     )
 
 
@@ -79,17 +80,16 @@ initModel { window } =
             window.height
 
         unitsOnScreen =
-            toFloat (min width height)
+            min width height
     in
     { score = 0
     , level = Level.empty
     , ballPosition = { x = 0, y = 0 }
-    , ballVelocity = { x = 0, y = 0 }
+    , ballVelocity = Movement.none
     , ballRadius = 0.025 * unitsOnScreen
     , state = StartScreen
     , paddle = { height = 0.033 * unitsOnScreen, width = 0.25 * unitsOnScreen }
     , paddlePosition = { x = 0, y = 0 }
-    , paddleVelocity = { x = 100, y = 0 }
     , bricks = Brick.init []
     , controls = initControls
     , window = { width = width, height = height }
@@ -107,7 +107,7 @@ initialBallAndPaddle :
 initialBallAndPaddle { level, paddle, window, unitsOnScreen } =
     let
         gameHeight =
-            toFloat window.height * 0.66
+            window.height * 0.66
 
         ballRadius =
             0.025 * unitsOnScreen
@@ -116,7 +116,7 @@ initialBallAndPaddle { level, paddle, window, unitsOnScreen } =
             level.paddleWidth * unitsOnScreen * 0.45
 
         paddlePosX =
-            (toFloat window.width - paddleWidth) / 2
+            (window.width - paddleWidth) / 2
 
         ballPosX =
             paddlePosX + (paddleWidth / 2)
@@ -154,6 +154,7 @@ type Msg
     | GameInput ControlState
     | LevelResult Level
     | ResizeWindow Int Int
+    | Reset
     | NoOp
 
 
@@ -173,7 +174,7 @@ update msg model =
             case model.state of
                 StartScreen ->
                     ( { model
-                        | window = { width = width // 2, height = height }
+                        | window = { width = toFloat width / 2, height = toFloat height }
                         , ballPosition = { x = model.ballPosition.x, y = toFloat height - 15 - model.ballRadius }
                       }
                     , Cmd.none
@@ -181,10 +182,15 @@ update msg model =
 
                 _ ->
                     ( { model
-                        | window = { width = width // 3, height = height // 2 }
+                        | window = { width = toFloat width / 2, height = toFloat height }
                       }
                     , Cmd.none
                     )
+
+        Reset ->
+            ( initModel { window = model.window }
+            , Random.generate LevelResult Level.random
+            )
 
         Tick delta ->
             case model.state of
@@ -229,13 +235,57 @@ update msg model =
             )
 
         GameInput input ->
-            case model.state of
-                Playing ->
-                    case input of
-                        PaddleLeft ->
+            case input of
+                PaddleLeft ->
+                    ( { model
+                        | controls =
+                            { left = True
+                            , right = False
+                            , movement = model.controls.movement
+                            }
+                      }
+                    , Cmd.none
+                    )
+
+                PaddleLeftUp ->
+                    ( { model
+                        | controls =
+                            { left = False
+                            , right = False
+                            , movement = model.controls.movement
+                            }
+                      }
+                    , Cmd.none
+                    )
+
+                PaddleRight ->
+                    ( { model
+                        | controls =
+                            { left = False
+                            , right = True
+                            , movement = model.controls.movement
+                            }
+                      }
+                    , Cmd.none
+                    )
+
+                PaddleRightUp ->
+                    ( { model
+                        | controls =
+                            { left = False
+                            , right = False
+                            , movement = model.controls.movement
+                            }
+                      }
+                    , Cmd.none
+                    )
+
+                Pause ->
+                    case model.state of
+                        Playing ->
                             ( { model
                                 | controls =
-                                    { left = not model.controls.left
+                                    { left = False
                                     , right = False
                                     , movement = Stopped
                                     }
@@ -243,83 +293,21 @@ update msg model =
                             , Cmd.none
                             )
 
-                        PaddleRight ->
-                            ( { model
-                                | controls =
-                                    { left = False
-                                    , right = not model.controls.right
-                                    , movement = Stopped
-                                    }
-                              }
-                            , Cmd.none
+                        StartScreen ->
+                            ( model, Cmd.none )
+
+                        _ ->
+                            ( initModel { window = model.window }
+                            , Random.generate LevelResult Level.random
                             )
 
-                        Pause ->
-                            ( { model
-                                | controls = { left = False, right = False, movement = Stopped }
-                              }
-                            , Cmd.none
-                            )
+                Serve ->
+                    case model.state of
+                        StartScreen ->
+                            ( serve model, Cmd.none )
 
                         _ ->
                             ( model, Cmd.none )
-
-                StartScreen ->
-                    case input of
-                        PaddleLeft ->
-                            ( { model
-                                | controls =
-                                    { left = True
-                                    , right = False
-                                    , movement = Stopped
-                                    }
-                              }
-                            , Cmd.none
-                            )
-
-                        PaddleLeftUp ->
-                            ( { model
-                                | controls =
-                                    { left = False
-                                    , right = False
-                                    , movement = Stopped
-                                    }
-                              }
-                            , Cmd.none
-                            )
-
-                        PaddleRight ->
-                            ( { model
-                                | controls =
-                                    { left = False
-                                    , right = True
-                                    , movement = Stopped
-                                    }
-                              }
-                            , Cmd.none
-                            )
-
-                        PaddleRightUp ->
-                            ( { model
-                                | controls =
-                                    { left = False
-                                    , right = False
-                                    , movement = Stopped
-                                    }
-                              }
-                            , Cmd.none
-                            )
-
-                        Serve ->
-                            ( serve model
-                            , Cmd.none
-                            )
-
-                        _ ->
-                            ( model, Cmd.none )
-
-                _ ->
-                    ( model, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
@@ -338,7 +326,7 @@ updateGameState model delta =
         ballBottom =
             newBallCenter.y - model.ballRadius
     in
-    if ballBottom > toFloat model.window.height then
+    if ballBottom > model.window.height then
         let
             { ballPosition, paddlePosition, paddle } =
                 initialBallAndPaddle model
@@ -379,7 +367,8 @@ updateGameState model delta =
 
 updateBallPosition : Model -> Float -> Vector2
 updateBallPosition model distance =
-    { x = 0, y = 0 }
+    Vector2.scaleBy model.ballVelocity distance
+        |> Vector2.add model.ballPosition
 
 
 movePaddle : Model -> Float -> Vector2
@@ -387,13 +376,13 @@ movePaddle model distance =
     let
         movementVector =
             if model.controls.left then
-                { x = -1, y = 0 }
+                Movement.left
 
             else if model.controls.right then
-                { x = 1, y = 0 }
+                Movement.right
 
             else
-                { x = 0, y = 0 }
+                Movement.none
 
         newPos =
             Vector2.scaleBy movementVector distance
@@ -402,9 +391,8 @@ movePaddle model distance =
     if newPos.x < 0 then
         { newPos | x = 0 }
 
-    else if newPos.x > (toFloat model.window.width - model.paddle.width) then
-        -- Vector2.scaleBy newPos unitsOnScreen
-        { newPos | x = toFloat model.window.width - model.paddle.width }
+    else if newPos.x > (model.window.width - model.paddle.width) then
+        { newPos | x = model.window.width - model.paddle.width }
 
     else
         newPos
@@ -418,10 +406,10 @@ serve model =
 
         initialVelocity =
             if controls.right then
-                Vector2.normalize { x = 1, y = -1 }
+                Vector2.normalize Movement.rightUp
 
             else
-                Vector2.normalize { x = -1, y = -1 }
+                Vector2.normalize Movement.leftUp
     in
     { model
         | controls =
@@ -438,79 +426,112 @@ serve model =
 ---- VIEW ----
 
 
-view : Model -> Html Msg
+view : Model -> Document Msg
 view model =
+    { title = "Elm Breakout"
+    , body = [ viewBody model ]
+    }
+
+
+viewBody : Model -> Html Msg
+viewBody model =
     Html.div
         [ Attributes.class "container" ]
         [ Html.div
             [ Attributes.class "game-container"
             ]
-            [ header model
+            [ viewHeader model
+            , viewOverlay model
             , case model.state of
                 StartScreen ->
-                    Html.div
-                        [ Attributes.class "game-overlay" ]
-                        [ Html.div [ Attributes.class "start-title" ]
-                            [ Html.text "Space to launch the ball" ]
-                        ]
+                    displayGameBoard model
+
+                Playing ->
+                    displayGameBoard model
 
                 _ ->
                     Html.text ""
-            , board model
-            , case model.state of
-                StartScreen ->
-                    Html.div [] []
-
-                Playing ->
-                    Html.div [] []
-
-                Won ->
-                    Html.div [ Attributes.class "game-content" ]
-                        [ Html.p [] [ Html.text "Winner" ] ]
-
-                Lost ->
-                    Html.div [ Attributes.class "game-content" ]
-                        [ Html.p [] [ Html.text "Enter to reset" ] ]
+            , viewFooter model
             ]
-        , Html.footer [] []
         ]
 
 
-header : Model -> Html Msg
-header model =
+viewHeader : Model -> Html Msg
+viewHeader model =
     let
         window =
             model.window
 
         headerHeight =
-            toFloat window.height * 0.16
+            window.height * 0.16
     in
     Svg.svg
-        [ SvgAttributes.width <| String.fromInt window.width
-        , SvgAttributes.height <| String.fromFloat headerHeight
+        [ Svg.Attributes.width <| String.fromFloat window.width
+        , Svg.Attributes.height <| String.fromFloat headerHeight
         ]
     <|
         [ Svg.text_
-            [ SvgAttributes.x "0"
-            , SvgAttributes.y <| String.fromFloat (headerHeight / 2 + 4)
-            , SvgAttributes.fontSize "12"
+            [ Svg.Attributes.x "0"
+            , Svg.Attributes.y <| String.fromFloat (headerHeight / 2 + 4)
+            , Svg.Attributes.fontSize "12"
             ]
             [ Svg.text "LEVEL 1" ]
         ]
             ++ Life.view (Level.lives model.level) headerHeight window.width
 
 
-board : Model -> Html Msg
-board model =
+viewFooter : Model -> Html Msg
+viewFooter model =
+    Html.footer []
+        [ Html.button
+            [ Events.onMouseDown (GameInput PaddleLeft) ]
+            [ Html.span [] [ Html.text "⬅️" ]
+            ]
+        , case model.state of
+            Playing ->
+                Html.button
+                    [ Events.onMouseDown (GameInput Pause) ]
+                    [ Html.span [] [ Html.text "⏸" ]
+                    ]
+
+            _ ->
+                Html.button
+                    [ Events.onMouseDown (GameInput Serve) ]
+                    [ Html.span [] [ Html.text "🚀" ]
+                    ]
+        , Html.button
+            [ Events.onMouseDown Reset ]
+            [ Html.span [] [ Html.text "↺" ]
+            ]
+        , Html.button
+            [ Events.onMouseDown (GameInput PaddleRight) ]
+            [ Html.span [] [ Html.text "➡️" ]
+            ]
+        ]
+
+
+viewOverlay : Model -> Html Msg
+viewOverlay model =
     case model.state of
         StartScreen ->
-            displayGameBoard model
+            Html.div
+                [ Attributes.class "game-overlay"
+                , Attributes.tabindex -1
+                ]
+                [ Html.div [ Attributes.class "start-title" ]
+                    [ Html.text "Space to launch the ball" ]
+                ]
 
         Playing ->
-            displayGameBoard model
+            Html.text ""
 
-        _ ->
-            Html.div [] []
+        Won ->
+            Html.div [ Attributes.class "game-content" ]
+                [ Html.p [] [ Html.text "Winner" ] ]
+
+        Lost ->
+            Html.div [ Attributes.class "game-content" ]
+                [ Html.p [] [ Html.text "Escape to reset" ] ]
 
 
 displayGameBoard : Model -> Html Msg
@@ -529,12 +550,12 @@ displayGameBoard model =
                 |> Maybe.withDefault 0
 
         height =
-            toFloat window.height * 0.66
+            window.height * 0.66
     in
     Svg.svg
-        [ SvgAttributes.width <| String.fromInt window.width
-        , SvgAttributes.height <| String.fromFloat height
-        , SvgAttributes.class "game-board"
+        [ Svg.Attributes.width <| String.fromFloat window.width
+        , Svg.Attributes.height <| String.fromFloat height
+        , Svg.Attributes.class "game-board"
         ]
     <|
         Brick.view numColumns model.bricks
@@ -555,44 +576,48 @@ subscriptions _ =
 
 keyDecoder : Decoder Msg
 keyDecoder =
-    Decode.map toInput (Decode.field "key" Decode.string)
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\key ->
+                case key of
+                    "ArrowLeft" ->
+                        Decode.succeed (GameInput PaddleLeft)
+
+                    "ArrowRight" ->
+                        Decode.succeed (GameInput PaddleRight)
+
+                    "ArrowUp" ->
+                        Decode.succeed (GameInput Serve)
+
+                    " " ->
+                        Decode.succeed (GameInput Serve)
+
+                    "Enter" ->
+                        Decode.succeed (GameInput Pause)
+
+                    "Escape" ->
+                        Decode.succeed Reset
+
+                    _ ->
+                        Decode.fail ""
+            )
 
 
 keyUpDecoder : Decoder Msg
 keyUpDecoder =
-    Decode.map toUpInput (Decode.field "key" Decode.string)
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\key ->
+                case key of
+                    "ArrowLeft" ->
+                        Decode.succeed (GameInput PaddleLeftUp)
 
+                    "ArrowRight" ->
+                        Decode.succeed (GameInput PaddleRightUp)
 
-toUpInput : String -> Msg
-toUpInput string =
-    case string of
-        "ArrowLeft" ->
-            GameInput PaddleLeftUp
-
-        "ArrowRight" ->
-            GameInput PaddleRightUp
-
-        _ ->
-            NoOp
-
-
-toInput : String -> Msg
-toInput string =
-    case string of
-        "ArrowLeft" ->
-            GameInput PaddleLeft
-
-        "ArrowRight" ->
-            GameInput PaddleRight
-
-        " " ->
-            GameInput Serve
-
-        "Escape" ->
-            GameInput Pause
-
-        _ ->
-            NoOp
+                    _ ->
+                        Decode.fail ""
+            )
 
 
 
@@ -605,7 +630,7 @@ type alias Flags =
 
 main : Program Flags Model Msg
 main =
-    Browser.element
+    Browser.document
         { view = view
         , init = init
         , update = update

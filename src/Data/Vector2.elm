@@ -25,7 +25,8 @@ normalize : Vector2 -> Vector2
 normalize vector =
     let
         length =
-            acos (vector.x / vector.y)
+            (vector.x ^ 2 + vector.y ^ 2)
+                |> sqrt
     in
     scaleBy vector (1 / length)
 

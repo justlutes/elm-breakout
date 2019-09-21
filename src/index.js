@@ -1,15 +1,15 @@
-import './main.css';
-import {Elm} from './Main.elm';
-import * as serviceWorker from './serviceWorker';
+import "./main.css";
+import { Elm } from "./Main.elm";
+import * as serviceWorker from "./serviceWorker";
 
 const flags = {
   window: {
-    width: window.innerWidth / 2,
-    height: window.innerHeight,
+    width: window.innerWidth < 400 ? window.innerWidth : window.innerWidth / 2,
+    height: window.innerHeight
   }
 };
 
-Elm.Main.init({flags, node: document.getElementById('root')});
+Elm.Main.init({ flags, node: document.getElementById("root") });
 
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.
