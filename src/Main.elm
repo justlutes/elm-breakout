@@ -35,6 +35,7 @@ type alias Model =
     , controls : Controls
     , window : Window
     , unitsOnScreen : Float
+    , paused : Bool
     }
 
 
@@ -94,6 +95,7 @@ initModel { window } =
     , controls = initControls
     , window = { width = width, height = height }
     , unitsOnScreen = unitsOnScreen
+    , paused = False
     }
 
 
@@ -193,27 +195,31 @@ update msg model =
             )
 
         Tick delta ->
-            case model.state of
-                Playing ->
-                    let
-                        newModel =
-                            updateGameState model delta
-                    in
-                    if newModel.level.lives < 1 then
-                        ( { newModel | state = Lost }, Cmd.none )
+            if model.paused then
+                ( model, Cmd.none )
 
-                    else
-                        ( newModel
+            else
+                case model.state of
+                    Playing ->
+                        let
+                            newModel =
+                                updateGameState model delta
+                        in
+                        if newModel.level.lives < 1 then
+                            ( { newModel | state = Lost }, Cmd.none )
+
+                        else
+                            ( newModel
+                            , Cmd.none
+                            )
+
+                    StartScreen ->
+                        ( updateGameState model delta
                         , Cmd.none
                         )
 
-                StartScreen ->
-                    ( updateGameState model delta
-                    , Cmd.none
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
+                    _ ->
+                        ( model, Cmd.none )
 
         LevelResult level ->
             let
@@ -287,8 +293,15 @@ update msg model =
                                 | controls =
                                     { left = False
                                     , right = False
-                                    , movement = Stopped
+                                    , movement =
+                                        case model.controls.movement of
+                                            Moving ->
+                                                Stopped
+
+                                            Stopped ->
+                                                Moving
                                     }
+                                , paused = not model.paused
                               }
                             , Cmd.none
                             )
@@ -491,7 +504,13 @@ viewFooter model =
             Playing ->
                 Html.button
                     [ Events.onMouseDown (GameInput Pause) ]
-                    [ Html.span [] [ Html.text "⏸" ]
+                    [ Html.span []
+                        [ if model.paused then
+                            Html.text "⏯"
+
+                          else
+                            Html.text "⏸"
+                        ]
                     ]
 
             _ ->
@@ -523,7 +542,17 @@ viewOverlay model =
                 ]
 
         Playing ->
-            Html.text ""
+            if model.paused then
+                Html.div
+                    [ Attributes.class "game-overlay"
+                    , Attributes.tabindex -1
+                    ]
+                    [ Html.div [ Attributes.class "start-title" ]
+                        [ Html.text "Game Paused" ]
+                    ]
+
+            else
+                Html.text ""
 
         Won ->
             Html.div [ Attributes.class "game-content" ]
