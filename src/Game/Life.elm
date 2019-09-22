@@ -4,26 +4,23 @@ import Svg exposing (Svg)
 import Svg.Attributes as Attributes
 
 
-view : Int -> Float -> Float -> List (Svg msg)
-view lives containerHeight containerWidth =
+view : Int -> Int -> Int -> List (Svg msg)
+view lives height containerWidth =
     let
-        height =
-            containerHeight * 0.16
-
         width =
-            (containerWidth / 5) / toFloat lives
+            (containerWidth // 5) // lives
     in
     List.range 1 lives
         |> List.map
             (\i ->
                 Svg.rect
-                    [ Attributes.height <| String.fromFloat height
-                    , Attributes.width <| String.fromFloat width
-                    , Attributes.y <| String.fromFloat (containerHeight / 2 - (height / 2))
+                    [ Attributes.height <| String.fromInt (height // 2)
+                    , Attributes.width <| String.fromInt width
+                    , Attributes.y <| String.fromInt (height // 2)
                     , Attributes.x <|
-                        String.fromFloat
-                            (containerWidth - (width * toFloat i + (width / 2 * toFloat i)))
-                    , Attributes.rx "1.25"
+                        String.fromInt
+                            (containerWidth - (width * i + (width // 2 * i)))
+                    , Attributes.rx "0.5"
                     , Attributes.fill "#C64947"
                     ]
                     []
