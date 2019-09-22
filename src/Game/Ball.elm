@@ -1,17 +1,14 @@
-module Game.Ball exposing (view)
-
-import Data.Vector2 exposing (Vector2)
-import Html exposing (Html)
-import Svg
-import Svg.Attributes as Attributes
+module Game.Ball exposing (Model, init)
 
 
-view : Vector2 -> Float -> Html msg
-view { x, y } radius =
-    Svg.circle
-        [ Attributes.r <| String.fromFloat radius
-        , Attributes.fill "#C64947"
-        , Attributes.cx <| String.fromFloat x
-        , Attributes.cy <| String.fromFloat y
-        ]
-        []
+type alias Model =
+    { radius : Float
+    , fill : String
+    }
+
+
+init : Float -> Model
+init radius =
+    { radius = radius
+    , fill = "#C64947"
+    }

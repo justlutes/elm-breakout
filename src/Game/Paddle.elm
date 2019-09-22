@@ -1,23 +1,16 @@
-module Game.Paddle exposing (Model, view)
-
-import Data.Vector2 exposing (Vector2)
-import Svg exposing (Svg)
-import Svg.Attributes as Attributes
+module Game.Paddle exposing (Model, init)
 
 
 type alias Model =
-    { height : Float
-    , width : Float
+    { height : Int
+    , width : Int
+    , fill : String
     }
 
 
-view : Vector2 -> Model -> Svg msg
-view vector { height, width } =
-    Svg.rect
-        [ Attributes.width <| String.fromFloat width
-        , Attributes.height <| String.fromFloat height
-        , Attributes.fill "#C64947"
-        , Attributes.x <| String.fromFloat vector.x
-        , Attributes.y <| String.fromFloat vector.y
-        ]
-        []
+init : Int -> Model
+init width =
+    { height = 1
+    , width = width
+    , fill = "#C64947"
+    }

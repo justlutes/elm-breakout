@@ -5,7 +5,7 @@ import Random exposing (Generator)
 
 type alias Level =
     { lives : Int
-    , paddleWidth : Float
+    , paddleWidth : Int
     , speed : Int
     , bricks : List (List Int)
     }
@@ -16,7 +16,7 @@ lives level =
     level.lives
 
 
-paddleWidth : Level -> Float
+paddleWidth : Level -> Int
 paddleWidth level =
     level.paddleWidth
 
@@ -40,14 +40,14 @@ empty =
     }
 
 
-random : Generator Level
-random =
+random : Int -> Generator Level
+random columns =
     Random.map4
         Level
         randLiveGen
         randPaddleGen
         randSpeedGen
-        randBrickGen
+        (randBrickGen columns)
 
 
 randLiveGen : Generator Int
@@ -55,9 +55,17 @@ randLiveGen =
     Random.int 2 5
 
 
-randPaddleGen : Generator Float
+randPaddleGen : Generator Int
 randPaddleGen =
-    Random.float 0.25 1
+    Random.int 3 7
+        |> Random.andThen
+            (\i ->
+                if modBy 2 i == 0 then
+                    Random.constant (i + 1)
+
+                else
+                    Random.constant i
+            )
 
 
 randSpeedGen : Generator Int
@@ -65,18 +73,14 @@ randSpeedGen =
     Random.int 1 3
 
 
-randBrickGen : Generator (List (List Int))
-randBrickGen =
-    Random.int 4 7
+randBrickGen : Int -> Generator (List (List Int))
+randBrickGen columns =
+    Random.int 2 5
         |> Random.andThen
             (\rows ->
-                Random.int 4 6
-                    |> Random.andThen
-                        (\columns ->
-                            let
-                                rowGenerator =
-                                    Random.list rows (Random.int 1 3)
-                            in
-                            Random.list columns rowGenerator
-                        )
+                let
+                    rowGenerator =
+                        Random.list (columns // 2) (Random.int 1 3)
+                in
+                Random.list rows rowGenerator
             )

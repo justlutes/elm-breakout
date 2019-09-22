@@ -2,6 +2,8 @@ module Main exposing (init, main, update)
 
 import Browser exposing (Document)
 import Browser.Events
+import Data.Cell as Cell exposing (Cell)
+import Data.Grid as Grid exposing (Coordinate, Grid)
 import Data.Level as Level exposing (Level)
 import Data.Movement as Movement
 import Data.Vector2 as Vector2 exposing (Vector2)
@@ -14,7 +16,7 @@ import Html.Attributes as Attributes
 import Html.Events as Events
 import Json.Decode as Decode exposing (Decoder)
 import Random
-import Svg
+import Svg exposing (Svg)
 import Svg.Attributes
 
 
@@ -36,6 +38,7 @@ type alias Model =
     , window : Window
     , unitsOnScreen : Float
     , paused : Bool
+    , grid : Grid Cell
     }
 
 
@@ -67,7 +70,7 @@ type alias Controls =
 init : Flags -> ( Model, Cmd Msg )
 init flags =
     ( initModel flags
-    , Random.generate LevelResult Level.random
+    , Random.generate LevelResult (Level.random 20)
     )
 
 
@@ -89,14 +92,79 @@ initModel { window } =
     , ballVelocity = Movement.none
     , ballRadius = 0.025 * unitsOnScreen
     , state = StartScreen
-    , paddle = { height = 0.033 * unitsOnScreen, width = 0.25 * unitsOnScreen }
+    , paddle = Paddle.init 0
     , paddlePosition = { x = 0, y = 0 }
     , bricks = Brick.init []
     , controls = initControls
     , window = { width = width, height = height }
     , unitsOnScreen = unitsOnScreen
     , paused = False
+    , grid = Grid.empty { rows = 10, columns = 20 }
     }
+
+
+generateLayout : Model -> Model
+generateLayout model =
+    let
+        newPaddle =
+            Paddle.init model.level.paddleWidth
+
+        ( baseX, baseY ) =
+            Grid.dimensions model.grid
+                |> (\{ rows, columns } ->
+                        ( (columns - newPaddle.width) // 2
+                        , rows
+                        )
+                   )
+
+        newGrid bricks paddle ball =
+            List.foldl (\( coords, cell ) -> Grid.insert coords cell) model.grid bricks
+                |> (\g ->
+                        List.foldl (\( coords, cell ) -> Grid.insert coords cell) g paddle
+                            |> (\g_ ->
+                                    List.foldl (\( coords, cell ) -> Grid.insert coords cell) g_ ball
+                               )
+                   )
+
+        brickCells =
+            Brick.generate model.level.bricks
+                |> List.indexedMap
+                    (\index columns ->
+                        columns
+                            |> List.indexedMap
+                                (\j brick ->
+                                    [ ( { x = toFloat (j + j)
+                                        , y = toFloat (index + 1)
+                                        }
+                                      , Cell.Brick brick
+                                      )
+                                    , ( { x = toFloat (j + j + 1)
+                                        , y = toFloat (index + 1)
+                                        }
+                                      , Cell.Brick brick
+                                      )
+                                    ]
+                                )
+                            |> List.concat
+                    )
+                |> List.concat
+
+        paddleCells =
+            List.repeat newPaddle.width newPaddle
+                |> List.indexedMap
+                    (\index p ->
+                        ( { x = toFloat (baseX + index)
+                          , y = toFloat (baseY - 1)
+                          }
+                        , Cell.Paddle p
+                        )
+                    )
+
+        ballCells =
+            Ball.init (toFloat Cell.size * 0.5)
+                |> (\b -> [ ( { x = toFloat (baseX + 1), y = toFloat (baseY - 2) }, Cell.Ball b ) ])
+    in
+    { model | grid = newGrid brickCells paddleCells ballCells }
 
 
 initialBallAndPaddle :
@@ -115,27 +183,27 @@ initialBallAndPaddle { level, paddle, window, unitsOnScreen } =
             0.025 * unitsOnScreen
 
         paddleWidth =
-            level.paddleWidth * unitsOnScreen * 0.45
+            level.paddleWidth
 
         paddlePosX =
-            (window.width - paddleWidth) / 2
+            (window.width - toFloat paddleWidth) / 2
 
         ballPosX =
-            paddlePosX + (paddleWidth / 2)
+            paddlePosX + (toFloat paddleWidth / 2)
 
         ballVector =
             { x = ballPosX
-            , y = gameHeight - paddle.height - ballRadius
+            , y = gameHeight - toFloat paddle.height - ballRadius
             }
 
         paddleVector =
             { x = paddlePosX
-            , y = gameHeight - paddle.height
+            , y = gameHeight - toFloat paddle.height
             }
     in
     { ballPosition = ballVector
     , paddlePosition = paddleVector
-    , paddle = { height = paddle.height, width = paddleWidth }
+    , paddle = { height = paddle.height, width = paddleWidth, fill = "#C64947" }
     }
 
 
@@ -155,7 +223,6 @@ type Msg
     = Tick Float
     | GameInput ControlState
     | LevelResult Level
-    | ResizeWindow Int Int
     | Reset
     | NoOp
 
@@ -172,26 +239,14 @@ type ControlState
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ResizeWindow width height ->
-            case model.state of
-                StartScreen ->
-                    ( { model
-                        | window = { width = toFloat width / 2, height = toFloat height }
-                        , ballPosition = { x = model.ballPosition.x, y = toFloat height - 15 - model.ballRadius }
-                      }
-                    , Cmd.none
-                    )
-
-                _ ->
-                    ( { model
-                        | window = { width = toFloat width / 2, height = toFloat height }
-                      }
-                    , Cmd.none
-                    )
-
         Reset ->
             ( initModel { window = model.window }
-            , Random.generate LevelResult Level.random
+            , Random.generate LevelResult
+                (Level.random
+                    (Grid.dimensions model.grid
+                        |> (\{ columns } -> columns)
+                    )
+                )
             )
 
         Tick delta ->
@@ -229,14 +284,10 @@ update msg model =
                         , bricks = Brick.init level.bricks
                     }
 
-                { ballPosition, paddlePosition, paddle } =
-                    initialBallAndPaddle modelWithLevel
+                updatedModel =
+                    generateLayout modelWithLevel
             in
-            ( { modelWithLevel
-                | ballPosition = ballPosition
-                , paddlePosition = paddlePosition
-                , paddle = paddle
-              }
+            ( updatedModel
             , Cmd.none
             )
 
@@ -311,7 +362,12 @@ update msg model =
 
                         _ ->
                             ( initModel { window = model.window }
-                            , Random.generate LevelResult Level.random
+                            , Random.generate LevelResult
+                                (Level.random
+                                    (Grid.dimensions model.grid
+                                        |> (\{ columns } -> columns)
+                                    )
+                                )
                             )
 
                 Serve ->
@@ -329,53 +385,70 @@ update msg model =
 updateGameState : Model -> Float -> Model
 updateGameState model delta =
     let
-        distance =
-            delta * 0.5 * toFloat (Level.speed model.level)
+        movementVector =
+            if model.controls.left then
+                Movement.left
 
-        newBallCenter =
-            Vector2.scaleBy model.ballVelocity distance
-                |> Vector2.add model.ballPosition
+            else if model.controls.right then
+                Movement.right
 
-        ballBottom =
-            newBallCenter.y - model.ballRadius
+            else
+                Movement.none
+
+        paddleCells =
+            Grid.filter
+                (\cell ->
+                    case cell of
+                        Cell.Paddle _ ->
+                            True
+
+                        _ ->
+                            False
+                )
+                model.grid
+                |> Grid.toList
+
+        movementMap =
+            paddleCells
+                |> List.map (\( coords, _ ) -> ( coords, Vector2.add coords movementVector ))
+
+        ( oldPositions, newPositions ) =
+            List.unzip movementMap
+
+        updatedGrid =
+            if boundsCheck newPositions model.grid then
+                model.grid
+
+            else
+                movementMap
+                    |> List.foldl
+                        (\( pos, nPos ) newGrid ->
+                            case ( Grid.get pos model.grid, List.member pos newPositions ) of
+                                ( Just cell, True ) ->
+                                    Grid.insert nPos cell newGrid
+
+                                ( Just cell, False ) ->
+                                    Grid.remove pos newGrid
+                                        |> Grid.insert nPos cell
+
+                                ( Nothing, _ ) ->
+                                    newGrid
+                        )
+                        model.grid
     in
-    if ballBottom > model.window.height then
-        let
-            { ballPosition, paddlePosition, paddle } =
-                initialBallAndPaddle model
+    { model | grid = updatedGrid }
 
-            level =
-                model.level
 
-            updatedLevel =
-                { level | lives = level.lives - 1 }
-        in
-        { model
-            | ballPosition = ballPosition
-            , paddlePosition = paddlePosition
-            , paddle = paddle
-            , level = updatedLevel
-        }
+boundsCheck : List Coordinate -> Grid Cell -> Bool
+boundsCheck coords grid =
+    let
+        { rows, columns } =
+            Grid.dimensions grid
 
-    else
-        let
-            newPaddlePosition =
-                movePaddle model distance
-
-            newBallPosition =
-                case model.state of
-                    Playing ->
-                        updateBallPosition model distance
-
-                    _ ->
-                        { x = newPaddlePosition.x + (model.paddle.width / 2)
-                        , y = model.ballPosition.y
-                        }
-        in
-        { model
-            | paddlePosition = newPaddlePosition
-            , ballPosition = newBallPosition
-        }
+        outOfBounds { x, y } =
+            x < 0 || x >= toFloat columns || y < 0 || y >= toFloat rows
+    in
+    List.any outOfBounds coords
 
 
 updateBallPosition : Model -> Float -> Vector2
@@ -397,6 +470,43 @@ movePaddle model distance =
             else
                 Movement.none
 
+        paddleCells =
+            Grid.filter
+                (\cell ->
+                    case cell of
+                        Cell.Paddle _ ->
+                            True
+
+                        _ ->
+                            False
+                )
+                model.grid
+                |> Grid.toList
+
+        movementMap =
+            paddleCells
+                |> List.map (\( coords, _ ) -> ( coords, Vector2.add coords movementVector ))
+
+        ( oldPositions, newPositions ) =
+            List.unzip movementMap
+
+        updatedGrid =
+            movementMap
+                |> List.foldl
+                    (\( pos, nPos ) newGrid ->
+                        case ( Grid.get pos model.grid, List.member pos newPositions ) of
+                            ( Just cell, True ) ->
+                                Grid.insert nPos cell newGrid
+
+                            ( Just cell, False ) ->
+                                Grid.remove pos newGrid
+                                    |> Grid.insert nPos cell
+
+                            ( Nothing, _ ) ->
+                                newGrid
+                    )
+                    model.grid
+
         newPos =
             Vector2.scaleBy movementVector distance
                 |> Vector2.add model.paddlePosition
@@ -404,8 +514,8 @@ movePaddle model distance =
     if newPos.x < 0 then
         { newPos | x = 0 }
 
-    else if newPos.x > (model.window.width - model.paddle.width) then
-        { newPos | x = model.window.width - model.paddle.width }
+    else if newPos.x > (model.window.width - toFloat model.paddle.width) then
+        { newPos | x = model.window.width - toFloat model.paddle.width }
 
     else
         newPos
@@ -455,15 +565,7 @@ viewBody model =
             ]
             [ viewHeader model
             , viewOverlay model
-            , case model.state of
-                StartScreen ->
-                    displayGameBoard model
-
-                Playing ->
-                    displayGameBoard model
-
-                _ ->
-                    Html.text ""
+            , displayGameBoard model
             , viewFooter model
             ]
         ]
@@ -565,32 +667,85 @@ viewOverlay model =
 
 displayGameBoard : Model -> Html Msg
 displayGameBoard model =
-    let
-        window =
-            model.window
-
-        numColumns =
-            model.level.bricks
-                |> List.map
-                    (\column ->
-                        List.length column
-                    )
-                |> List.head
-                |> Maybe.withDefault 0
-
-        height =
-            window.height * 0.66
-    in
     Svg.svg
-        [ Svg.Attributes.width <| String.fromFloat window.width
-        , Svg.Attributes.height <| String.fromFloat height
-        , Svg.Attributes.class "game-board"
+        [ Grid.dimensions model.grid
+            |> (\{ rows, columns } -> [ 0, 0, columns * Cell.size, rows * Cell.size ])
+            |> List.map String.fromInt
+            |> String.join " "
+            |> Svg.Attributes.viewBox
+        , Svg.Attributes.width "100%"
+        , Svg.Attributes.height "100%"
+        , Svg.Attributes.preserveAspectRatio "xMidYMid meet"
         ]
-    <|
-        Brick.view numColumns model.bricks
-            ++ [ Ball.view model.ballPosition model.ballRadius
-               , Paddle.view model.paddlePosition model.paddle
-               ]
+        (List.map (viewCell model.grid) (Grid.coordinates model.grid))
+
+
+viewCell : Grid Cell -> Coordinate -> Svg Msg
+viewCell grid { x, y } =
+    Grid.get { x = x, y = y } grid
+        |> Maybe.map
+            (\cell ->
+                case cell of
+                    Cell.Ball ball ->
+                        Svg.g
+                            []
+                            [ Svg.rect
+                                [ Svg.Attributes.fill "#1760b9"
+                                , Svg.Attributes.width (String.fromInt Cell.size)
+                                , Svg.Attributes.height (String.fromInt Cell.size)
+                                , Svg.Attributes.x (String.fromFloat (x * toFloat Cell.size))
+                                , Svg.Attributes.y (String.fromFloat (y * toFloat Cell.size))
+                                ]
+                                []
+                            , Svg.circle
+                                [ Svg.Attributes.r (String.fromFloat ball.radius)
+                                , Svg.Attributes.fill ball.fill
+                                , Svg.Attributes.cx (String.fromFloat ((x * toFloat Cell.size) + ball.radius))
+                                , Svg.Attributes.cy (String.fromFloat ((y * toFloat Cell.size) + ball.radius))
+                                ]
+                                []
+                            ]
+
+                    _ ->
+                        Svg.rect
+                            [ Svg.Attributes.fill (Cell.color cell)
+                            , Svg.Attributes.width (String.fromInt Cell.size)
+                            , Svg.Attributes.height (String.fromInt Cell.size)
+                            , Svg.Attributes.strokeWidth (String.fromFloat (0.05 * toFloat Cell.size))
+                            , Svg.Attributes.stroke (Cell.stroke cell)
+                            , Svg.Attributes.x (String.fromFloat (x * toFloat Cell.size))
+                            , Svg.Attributes.y (String.fromFloat (y * toFloat Cell.size))
+                            , additionalCellAttrs cell { x = x, y = x }
+                            ]
+                            []
+            )
+        |> Maybe.withDefault (viewEmptyCell { x = x, y = y })
+
+
+additionalCellAttrs : Cell -> Coordinate -> Svg.Attribute msg
+additionalCellAttrs cell { x, y } =
+    case cell of
+        Cell.Brick _ ->
+            if modBy 2 (round x) == 0 then
+                Svg.Attributes.strokeDasharray "1, 1, 2"
+
+            else
+                Svg.Attributes.strokeDasharray "3, 1"
+
+        _ ->
+            Svg.Attributes.strokeDasharray ""
+
+
+viewEmptyCell : Coordinate -> Svg Msg
+viewEmptyCell { x, y } =
+    Svg.rect
+        [ Svg.Attributes.fill "#1760b9"
+        , Svg.Attributes.width (String.fromInt Cell.size)
+        , Svg.Attributes.height (String.fromInt Cell.size)
+        , Svg.Attributes.x (String.fromFloat (x * toFloat Cell.size))
+        , Svg.Attributes.y (String.fromFloat (y * toFloat Cell.size))
+        ]
+        []
 
 
 subscriptions : Model -> Sub Msg
@@ -599,7 +754,6 @@ subscriptions _ =
         [ Browser.Events.onKeyDown keyDecoder
         , Browser.Events.onKeyUp keyUpDecoder
         , Browser.Events.onAnimationFrameDelta Tick
-        , Browser.Events.onResize ResizeWindow
         ]
 
 

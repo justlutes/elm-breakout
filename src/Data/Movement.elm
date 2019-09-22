@@ -1,44 +1,38 @@
-module Data.Movement exposing (Movement, down, left, leftUp, none, right, rightUp, up)
+module Data.Movement exposing (down, left, leftUp, none, right, rightUp, up)
 
 import Data.Vector2 as Vector2 exposing (Vector2)
 
 
-type alias Movement =
-    Vector2
-
-
-none : Movement
+none : Vector2
 none =
     { x = 0, y = 0 }
 
 
-left : Movement
+left : Vector2
 left =
     { x = -1, y = 0 }
 
 
-right : Movement
+right : Vector2
 right =
     { x = 1, y = 0 }
 
 
-up : Movement
+up : Vector2
 up =
     { x = 0, y = -1 }
 
 
-down : Movement
+down : Vector2
 down =
     { x = 0, y = 1 }
 
 
-leftUp : Movement
+leftUp : Vector2
 leftUp =
     Vector2.add left up
-        |> Vector2.normalize
 
 
-rightUp : Movement
+rightUp : Vector2
 rightUp =
     Vector2.add right up
-        |> Vector2.normalize

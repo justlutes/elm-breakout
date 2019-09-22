@@ -1,4 +1,4 @@
-module Game.Brick exposing (Model, getBrick, getRow, init, view)
+module Game.Brick exposing (Model, generate, getBrick, getRow, init, view)
 
 import Svg exposing (Svg)
 import Svg.Attributes as Attributes
@@ -17,6 +17,12 @@ init rows =
     rows
         |> List.indexedMap create
         |> List.concat
+
+
+generate : List (List Int) -> List (List Model)
+generate rows =
+    rows
+        |> List.indexedMap create
 
 
 create : Int -> List Int -> List Model
